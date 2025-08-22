@@ -1,0 +1,62 @@
+specVersion: 0.0.5
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: ForgeInventory
+    network: base-sepolia
+    source:
+      address: "0xD21C2B389073cC05251D3afC0B41674BF05C62e9" # ForgeInventory proxy contract
+      abi: ForgeInventory
+      startBlock: 18800000 # Approximate block when contract was deployed
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Token
+        - TokenCreation
+        - TokenMint
+        - RoleChange
+        - User
+        - TokenMetadata
+        - TokenAttribute
+        - TokenProperties
+        - UserInventoryItem
+        - AllEvent
+      abis:
+        - name: ForgeInventory
+          file: ./abis/ForgeInventory.json
+      eventHandlers:
+        - event: TokenCreated(indexed uint256,uint8,string,string)
+          handler: handleTokenCreated
+        - event: TransferSingle(indexed address,indexed address,indexed address,uint256,uint256)
+          handler: handleTransferSingle
+        - event: TransferBatch(indexed address,indexed address,indexed address,uint256[],uint256[])
+          handler: handleTransferBatch
+        - event: RoleGranted(indexed bytes32,indexed address,indexed address)
+          handler: handleRoleGranted
+        - event: RoleRevoked(indexed bytes32,indexed address,indexed address)
+          handler: handleRoleRevoked
+      file: ./src/mapping.ts
+templates:
+  - kind: ethereum
+    name: MetadataFetcher
+    network: base-sepolia
+    source:
+      abi: MetadataFetcher
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - TokenMetadata
+        - TokenAttribute
+        - TokenProperties
+      abis:
+        - name: MetadataFetcher
+          file: ./abis/MetadataFetcher.json
+      eventHandlers:
+        - event: MetadataRequested(indexed uint256)
+          handler: handleMetadataRequested
+      file: ./src/metadata-mapping.ts

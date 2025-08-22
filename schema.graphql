@@ -1,0 +1,197 @@
+type Token @entity {
+  id: ID!
+  tokenId: BigInt!
+  tokenType: Int! # 0 = ERC1155, 1 = ERC721
+  category: String!
+  subCategory: String!
+  soulbound: Boolean!
+  maxSupply: BigInt!
+  currentSupply: BigInt!
+  creator: Bytes!
+  tokenURI: String
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+  createdTxHash: Bytes!
+  # Relations
+  creations: [TokenCreation!]! @derivedFrom(field: "token")
+  mints: [TokenMint!]! @derivedFrom(field: "token")
+  # Metadata fields for better inventory queries
+  metadata: TokenMetadata
+  balances: [UserTokenBalance!]! @derivedFrom(field: "token")
+  # Direct metadata fields for immediate access
+  name: String
+  description: String
+  image: String
+  rewardId: String
+  forgeId: String  # The forge_id from token metadata properties
+}
+
+type TokenMetadata @entity {
+  id: ID!
+  token: Token!
+  name: String
+  description: String
+  image: String
+  rewardId: String  # The reward ID from your rewards.json
+  attributes: [TokenAttribute!]! @derivedFrom(field: "metadata")
+  properties: TokenProperties
+}
+
+type TokenAttribute @entity {
+  id: ID!
+  metadata: TokenMetadata!
+  traitType: String!
+  value: String!
+}
+
+type TokenProperties @entity {
+  id: ID!
+  metadata: TokenMetadata!
+  badgeType: String
+  createdBy: String
+  rewardId: String
+  forgeId: String  # The forge_id from token metadata properties
+}
+
+type TokenCreation @entity {
+  id: ID!
+  token: Token!
+  tokenId: BigInt!
+  tokenType: Int!
+  category: String!
+  subCategory: String!
+  creator: User!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type TokenMint @entity {
+  id: ID!
+  token: Token!
+  to: User!
+  amount: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+  operator: Bytes!
+  # Additional fields for inventory tracking
+  rewardId: String  # The reward ID if available
+  collectionAddress: String  # For DCL collection mints
+  # Direct access to token metadata for inventory queries
+  tokenName: String
+  tokenDescription: String
+  tokenImage: String
+  tokenCategory: String
+  tokenSubCategory: String
+  tokenForgeId: String  # The forge_id from token metadata properties
+}
+
+type User @entity {
+  id: ID!
+  address: Bytes!
+  # Token interactions
+  tokensCreated: [TokenCreation!]! @derivedFrom(field: "creator")
+  tokensMinted: [TokenMint!]! @derivedFrom(field: "to")
+  balances: [UserTokenBalance!]! @derivedFrom(field: "user")
+  # Role management
+  roleChanges: [RoleChange!]! @derivedFrom(field: "account")
+  # Stats
+  totalTokensCreated: BigInt!
+  totalTokensMinted: BigInt!
+  firstInteraction: BigInt!
+  lastInteraction: BigInt!
+  # New inventory fields
+  inventory: [UserInventoryItem!]! @derivedFrom(field: "user")
+  totalInventoryValue: BigInt!
+}
+
+type UserInventoryItem @entity {
+  id: ID! # user-tokenId
+  user: User!
+  token: Token!
+  balance: BigInt!
+  lastUpdated: BigInt!
+  firstAcquired: BigInt!
+  lastAcquired: BigInt!
+  # Additional inventory metadata
+  rewardId: String
+  collectionAddress: String
+  tokenType: Int
+  category: String
+  subCategory: String
+}
+
+type UserTokenBalance @entity {
+  id: ID! # user-tokenId
+  user: User!
+  token: Token!
+  balance: BigInt!
+  lastUpdated: BigInt!
+}
+
+type RoleChange @entity {
+  id: ID!
+  role: Bytes!
+  roleName: String!
+  account: User!
+  sender: Bytes!
+  granted: Boolean! # true = granted, false = revoked
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type GlobalStats @entity {
+  id: ID!
+  totalTokens: BigInt!
+  totalMints: BigInt!
+  totalUsers: BigInt!
+  totalSupply: BigInt!
+  totalEvents: BigInt!
+  lastUpdated: BigInt!
+}
+
+type DailyStats @entity {
+  id: ID! # timestamp-day
+  date: BigInt!
+  tokensCreated: BigInt!
+  tokensMinted: BigInt!
+  activeUsers: BigInt!
+  totalSupplyChange: BigInt!
+}
+
+type AllEvent @entity {
+  id: ID!
+  eventType: String!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  transactionIndex: BigInt!
+  logIndex: BigInt!
+  timestamp: BigInt!
+  gasUsed: BigInt!
+  gasPrice: BigInt!
+  from: Bytes!
+  to: Bytes!
+  value: BigInt!
+  description: String!
+  # TokenCreated specific fields
+  tokenId: BigInt
+  tokenType: Int
+  category: String
+  subCategory: String
+  creator: Bytes
+  # Transfer specific fields
+  fromAddress: Bytes
+  toAddress: Bytes
+  amount: BigInt
+  amounts: [BigInt!]
+  tokenIds: [BigInt!]
+  operator: Bytes
+  # Role specific fields
+  role: Bytes
+  roleHash: Bytes
+  account: Bytes
+  sender: Bytes
+}

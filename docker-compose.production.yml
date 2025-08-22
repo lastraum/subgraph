@@ -1,0 +1,70 @@
+version: '3'
+services:
+  graph-node:
+    image: graphprotocol/graph-node:latest
+    ports:
+      - '8000:8000'  # GraphQL endpoint
+      - '8001:8001'  # WebSocket
+      - '8020:8020'  # Admin/deployment endpoint
+      - '8030:8030'  # Metrics
+      - '8040:8040'  # Health check
+    depends_on:
+      - ipfs
+      - postgres
+    environment:
+      postgres_host: postgres
+      postgres_user: graph-node
+      postgres_pass: forge-graph-secret
+      postgres_db: graph-node
+      ipfs: 'ipfs:5001'
+      ethereum: 'base-sepolia:https://sepolia.base.org'
+      GRAPH_LOG: info
+      GRAPH_ALLOW_NON_DETERMINISTIC_IPFS: true
+      RUST_LOG: info
+    restart: unless-stopped
+    volumes:
+      - ./data/graph-node:/data
+    
+  ipfs:
+    image: ipfs/kubo:latest
+    ports:
+      - '5001:5001'  # API
+      - '4001:4001'  # Swarm
+      - '8080:8080'  # Gateway
+    volumes:
+      - ./data/ipfs:/data/ipfs
+    environment:
+      IPFS_PROFILE: server
+    restart: unless-stopped
+    
+  postgres:
+    image: postgres:14
+    ports:
+      - '5433:5432'  # Use 5433 to avoid conflicts with existing postgres
+    command:
+      [
+        "postgres",
+        "-cshared_preload_libraries=pg_stat_statements",
+        "-cmax_connections=200",
+        "-clog_destination=stderr",
+        "-clog_statement=all"
+      ]
+    environment:
+      POSTGRES_USER: graph-node
+      POSTGRES_PASSWORD: forge-graph-secret
+      POSTGRES_DB: graph-node
+      PGDATA: "/var/lib/postgresql/data"
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U graph-node"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  ipfs_data:
+  graph_data:

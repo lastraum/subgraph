@@ -1,0 +1,265 @@
+# Example GraphQL queries for The Forge Inventory Subgraph
+
+# Get all tokens with details
+query GetAllTokens($first: Int = 10) {
+  tokens(first: $first, orderBy: createdAt, orderDirection: desc) {
+    id
+    tokenId
+    category
+    subCategory
+    tokenType
+    soulbound
+    maxSupply
+    currentSupply
+    creator
+    tokenURI
+    createdAt
+    createdAtBlock
+    createdTxHash
+  }
+}
+
+# Get tokens by category
+query GetTokensByCategory($category: String!, $first: Int = 10) {
+  tokens(
+    where: { category: $category }
+    first: $first
+    orderBy: createdAt
+    orderDirection: desc
+  ) {
+    id
+    tokenId
+    category
+    subCategory
+    tokenType
+    currentSupply
+    maxSupply
+    creator
+    createdAt
+  }
+}
+
+# Get recent token creations
+query GetRecentTokenCreations($first: Int = 20) {
+  tokenCreations(first: $first, orderBy: timestamp, orderDirection: desc) {
+    id
+    token {
+      tokenId
+      category
+      subCategory
+      tokenType
+    }
+    creator {
+      id
+      address
+    }
+    timestamp
+    blockNumber
+    transactionHash
+  }
+}
+
+# Get user token balances
+query GetUserTokenBalances($userAddress: String!) {
+  user(id: $userAddress) {
+    id
+    address
+    totalTokensCreated
+    totalTokensMinted
+    balances {
+      token {
+        tokenId
+        category
+        subCategory
+        tokenType
+      }
+      balance
+      lastUpdated
+    }
+  }
+}
+
+# Get token minting history
+query GetTokenMints($tokenId: String!, $first: Int = 10) {
+  tokenMints(
+    where: { token: $tokenId }
+    first: $first
+    orderBy: timestamp
+    orderDirection: desc
+  ) {
+    id
+    to {
+      address
+    }
+    amount
+    timestamp
+    blockNumber
+    transactionHash
+    operator
+  }
+}
+
+# Get role changes
+query GetRoleChanges($first: Int = 20) {
+  roleChanges(first: $first, orderBy: timestamp, orderDirection: desc) {
+    id
+    roleName
+    account {
+      address
+    }
+    sender
+    granted
+    timestamp
+    blockNumber
+    transactionHash
+  }
+}
+
+# Get global platform statistics
+query GetGlobalStats {
+  globalStats(id: "global") {
+    totalTokens
+    totalMints
+    totalUsers
+    totalSupply
+    lastUpdated
+  }
+}
+
+# Get daily statistics
+query GetDailyStats($first: Int = 30) {
+  dailyStats(first: $first, orderBy: date, orderDirection: desc) {
+    id
+    date
+    tokensCreated
+    tokensMinted
+    activeUsers
+    totalSupplyChange
+  }
+}
+
+# Get top token creators
+query GetTopCreators($first: Int = 10) {
+  users(
+    first: $first
+    orderBy: totalTokensCreated
+    orderDirection: desc
+    where: { totalTokensCreated_gt: "0" }
+  ) {
+    id
+    address
+    totalTokensCreated
+    totalTokensMinted
+    firstInteraction
+    lastInteraction
+  }
+}
+
+# Get tokens with highest supply
+query GetHighestSupplyTokens($first: Int = 10) {
+  tokens(
+    first: $first
+    orderBy: currentSupply
+    orderDirection: desc
+    where: { currentSupply_gt: "0" }
+  ) {
+    id
+    tokenId
+    category
+    subCategory
+    currentSupply
+    maxSupply
+    creator
+  }
+}
+
+# Search tokens by category and subcategory
+query SearchTokens($category: String, $subCategory: String, $first: Int = 10) {
+  tokens(
+    where: {
+      and: [
+        { category_contains_nocase: $category }
+        { subCategory_contains_nocase: $subCategory }
+      ]
+    }
+    first: $first
+    orderBy: createdAt
+    orderDirection: desc
+  ) {
+    id
+    tokenId
+    category
+    subCategory
+    tokenType
+    currentSupply
+    creator
+    createdAt
+  }
+}
+
+# Get token activity (creations + mints) for a specific token
+query GetTokenActivity($tokenId: String!) {
+  token(id: $tokenId) {
+    id
+    tokenId
+    category
+    subCategory
+    tokenType
+    currentSupply
+    maxSupply
+    creator
+    createdAt
+    
+    creations {
+      id
+      creator {
+        address
+      }
+      timestamp
+      transactionHash
+    }
+    
+    mints {
+      id
+      to {
+        address
+      }
+      amount
+      timestamp
+      transactionHash
+    }
+  }
+}
+
+# Get user activity timeline
+query GetUserActivity($userAddress: String!, $first: Int = 20) {
+  user(id: $userAddress) {
+    id
+    address
+    totalTokensCreated
+    totalTokensMinted
+    
+    tokensCreated(first: $first, orderBy: timestamp, orderDirection: desc) {
+      id
+      token {
+        tokenId
+        category
+        subCategory
+      }
+      timestamp
+      transactionHash
+    }
+    
+    tokensMinted(first: $first, orderBy: timestamp, orderDirection: desc) {
+      id
+      token {
+        tokenId
+        category
+        subCategory
+      }
+      amount
+      timestamp
+      transactionHash
+    }
+  }
+}

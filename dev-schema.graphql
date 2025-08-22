@@ -1,0 +1,268 @@
+# Simplified GraphQL schema for development (without Graph Protocol directives)
+
+type Token {
+  id: ID!
+  tokenId: String!
+  tokenType: String!
+  category: String!
+  subCategory: String!
+  soulbound: Boolean!
+  maxSupply: String!
+  currentSupply: String!
+  creator: String!
+  tokenURI: String
+  createdAt: String!
+  createdAtBlock: String!
+  createdTxHash: String!
+  
+  # Metadata fields for better inventory queries
+  metadata: TokenMetadata
+  mints: [TokenMint!]!
+  balances: [UserTokenBalance!]!
+  
+  # Direct metadata fields for immediate access
+  name: String
+  description: String
+  image: String
+  rewardId: String
+  forgeId: String  # The forge_id from token metadata properties
+}
+
+# New entity for token metadata
+type TokenMetadata {
+  id: ID!
+  token: Token!
+  name: String
+  description: String
+  image: String
+  rewardId: String  # The reward ID from your rewards.json
+  attributes: [TokenAttribute!]!
+  properties: TokenProperties
+}
+
+# Token attributes (for rarity, type, etc.)
+type TokenAttribute {
+  id: ID!
+  metadata: TokenMetadata!
+  traitType: String!
+  value: String!
+}
+
+# Token properties (for additional metadata)
+type TokenProperties {
+  id: ID!
+  metadata: TokenMetadata!
+  badgeType: String
+  createdBy: String
+  rewardId: String
+  forgeId: String  # The forge_id from token metadata properties
+}
+
+type TokenCreation {
+  id: ID!
+  token: Token
+  tokenId: String!
+  tokenType: String!
+  category: String!
+  subCategory: String!
+  creator: User
+  timestamp: String!
+  blockNumber: String!
+  transactionHash: String!
+}
+
+type TokenMint {
+  id: ID!
+  token: Token
+  to: User
+  amount: String!
+  timestamp: String!
+  blockNumber: String!
+  transactionHash: String!
+  operator: String!
+  
+  # Additional fields for inventory tracking
+  rewardId: String  # The reward ID if available
+  collectionAddress: String  # For DCL collection mints
+  
+  # Direct access to token metadata for inventory queries
+  tokenName: String
+  tokenDescription: String
+  tokenImage: String
+  tokenCategory: String
+  tokenSubCategory: String
+  tokenForgeId: String  # The forge_id from token metadata properties
+}
+
+type User {
+  id: ID!
+  address: String!
+  totalTokensCreated: String!
+  totalTokensMinted: String!
+  firstInteraction: String!
+  lastInteraction: String!
+  balances: [UserTokenBalance!]!
+  tokensCreated: [TokenCreation!]!
+  tokensMinted: [TokenMint!]!
+  
+  # New inventory fields
+  inventory: [UserInventoryItem!]!
+  totalInventoryValue: String!
+}
+
+# New entity for user inventory items
+type UserInventoryItem {
+  id: ID! # user-tokenId
+  user: User!
+  token: Token!
+  balance: String!
+  lastUpdated: String!
+  firstAcquired: String!
+  lastAcquired: String!
+  
+  # Additional inventory metadata
+  rewardId: String
+  collectionAddress: String
+  tokenType: String
+  category: String
+  subCategory: String
+}
+
+type UserTokenBalance {
+  id: ID!
+  user: User!
+  token: Token!
+  balance: String!
+  lastUpdated: String!
+}
+
+type RoleChange {
+  id: ID!
+  role: String!
+  roleName: String!
+  account: User!
+  sender: String!
+  granted: Boolean!
+  timestamp: String!
+  blockNumber: String!
+  transactionHash: String!
+}
+
+type AllEvent {
+  id: ID!
+  eventType: String!
+  blockNumber: String!
+  blockHash: String!
+  transactionHash: String!
+  transactionIndex: String!
+  logIndex: String!
+  timestamp: String!
+  gasUsed: String!
+  gasPrice: String!
+  from: String!
+  to: String!
+  value: String!
+  description: String!
+  
+  # TokenCreated specific fields
+  tokenId: String
+  tokenType: String
+  category: String
+  subCategory: String
+  creator: String
+  
+  # Transfer specific fields
+  fromAddress: String
+  toAddress: String
+  amount: String
+  amounts: String
+  tokenIds: String
+  operator: String
+  
+  # Role specific fields
+  role: String
+  roleHash: String
+  account: String
+  sender: String
+}
+
+type GlobalStats {
+  id: ID!
+  totalTokens: String!
+  totalMints: String!
+  totalUsers: String!
+  totalSupply: String!
+  totalEvents: String!
+  lastUpdated: String!
+}
+
+type DailyStats {
+  id: ID!
+  date: String!
+  tokensCreated: String!
+  tokensMinted: String!
+  activeUsers: String!
+  totalSupplyChange: String!
+}
+
+# Input types for filtering
+input TokenFilter {
+  category: String
+  category_contains_nocase: String
+  subCategory: String
+}
+
+input UserFilter {
+  totalTokensCreated_gt: String
+}
+
+# New input types for inventory queries
+input InventoryFilter {
+  userAddress: String!
+  category: String
+  tokenType: String
+  rewardId: String
+}
+
+input MintEventFilter {
+  to: String!
+  from: String
+  tokenId: String
+  rewardId: String
+  collectionAddress: String
+}
+
+type Query {
+  # Token queries
+  tokens(first: Int, orderBy: String, orderDirection: String, where: TokenFilter): [Token!]!
+  token(id: ID!): Token
+  
+  # Token creation queries
+  tokenCreations(first: Int, orderBy: String, orderDirection: String): [TokenCreation!]!
+  
+  # Token mint queries
+  tokenMints(first: Int, orderBy: String, orderDirection: String, where: MintEventFilter): [TokenMint!]!
+  
+  # User queries
+  users(first: Int, orderBy: String, orderDirection: String, where: UserFilter): [User!]!
+  user(id: ID!): User
+  
+  # Balance queries
+  userTokenBalances(first: Int, where: TokenFilter): [UserTokenBalance!]!
+  
+  # Role queries
+  roleChanges(first: Int, orderBy: String, orderDirection: String): [RoleChange!]!
+  
+  # All Events queries (comprehensive event journal)
+  allEvents(first: Int, skip: Int, eventType: String, orderBy: String, orderDirection: String): [AllEvent!]!
+  
+  # Stats queries
+  globalStats(id: ID!): GlobalStats
+  dailyStats(first: Int, orderBy: String, orderDirection: String): [DailyStats!]!
+  
+  # New inventory queries
+  userInventory(userAddress: String!, first: Int, skip: Int): [UserInventoryItem!]!
+  userMintEvents(userAddress: String!, first: Int, skip: Int): [TokenMint!]!
+  tokensByRewardId(rewardId: String!): [Token!]!
+  mintEventsToUser(userAddress: String!, first: Int, skip: Int): [TokenMint!]!
+}
