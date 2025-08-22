@@ -3,24 +3,27 @@ import { MetadataRequested } from "../generated/templates/MetadataFetcher/Metada
 import { ForgeInventory } from "../generated/ForgeInventory/ForgeInventory";
 import { Token, TokenMetadata, TokenProperties, TokenAttribute } from "../generated/schema";
 
-const FORGE_INVENTORY_ADDRESS = "0xD21C2B389073cC05251D3afC0B41674BF05C62e9"; // ForgeInventory contract address
+const FORGE_INVENTORY_ADDRESS = "0xD21C2B389073cC05251D3afC0B41674BF05C62e9";
 
-// Reused from mapping.ts to avoid duplication
-function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata | null {
+function fetchAndParseMetadata(tokenId: string, tokenURI: string | null): TokenMetadata | null {
   let metadata = new TokenMetadata(tokenId);
-  metadata.token = tokenId; // Will be updated to reference Token entity
+  metadata.token = tokenId;
 
-  // Set default values
   metadata.name = "Token " + tokenId;
   metadata.description = "Description for token " + tokenId;
   metadata.image = "";
   metadata.rewardId = "";
 
-  // Handle HTTP URIs
+  if (!tokenURI) {
+    log.warning("Empty tokenURI for token ID: {}", [tokenId]);
+    metadata.save();
+    return metadata;
+  }
+
   if (tokenURI.startsWith("http")) {
     log.info("HTTP URI detected for token: {}", [tokenId]);
     let response = http.get(tokenURI);
-    if (response.status == 200) {
+    if (response && response.status == 200) {
       let metadataJson = json.try_fromBytes(response.body);
       if (metadataJson.isOk) {
         let metadataObj = metadataJson.value.toObject();
@@ -35,7 +38,6 @@ function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata
         if (image) metadata.image = image.toString();
         if (rewardId) metadata.rewardId = rewardId.toString();
 
-        // Parse attributes if present
         let attributes = metadataObj.get("attributes");
         if (attributes && attributes.kind == json.JSONValueKind.ARRAY) {
           let attrArray = attributes.toArray();
@@ -61,12 +63,10 @@ function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata
     } else {
       log.warning("HTTP request failed for token ID {}, status: {}", [
         tokenId,
-        response.status.toString()
+        response ? response.status.toString() : "no response"
       ]);
     }
-  }
-  // Handle IPFS URIs
-  else if (tokenURI.startsWith("ipfs://")) {
+  } else if (tokenURI.startsWith("ipfs://")) {
     log.info("IPFS URI detected for token: {}", [tokenId]);
     let ipfsHash = tokenURI.replace("ipfs://", "").split("/")[0];
     let metadataBytes = ipfs.cat(ipfsHash);
@@ -86,7 +86,6 @@ function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata
         if (image) metadata.image = image.toString();
         if (rewardId) metadata.rewardId = rewardId.toString();
 
-        // Parse attributes if present
         let attributes = metadataObj.get("attributes");
         if (attributes && attributes.kind == json.JSONValueKind.ARRAY) {
           let attrArray = attributes.toArray();
@@ -116,7 +115,6 @@ function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata
     log.info("Non-HTTP/IPFS tokenURI for token ID: {}", [tokenId]);
   }
 
-  // Create properties entity
   let properties = new TokenProperties(tokenId);
   properties.metadata = tokenId;
   properties.badgeType = "";
@@ -124,10 +122,9 @@ function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata
   properties.rewardId = metadata.rewardId;
   properties.forgeId = "";
 
-  // Extract forge_id for properties
-  if (tokenURI.startsWith("http")) {
+  if (tokenURI && tokenURI.startsWith("http")) {
     let response = http.get(tokenURI);
-    if (response.status == 200) {
+    if (response && response.status == 200) {
       let metadataJson = json.try_fromBytes(response.body);
       if (metadataJson.isOk) {
         let metadataObj = metadataJson.value.toObject();
@@ -138,7 +135,7 @@ function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata
         }
       }
     }
-  } else if (tokenURI.startsWith("ipfs://")) {
+  } else if (tokenURI && tokenURI.startsWith("ipfs://")) {
     let ipfsHash = tokenURI.replace("ipfs://", "").split("/")[0];
     let metadataBytes = ipfs.cat(ipfsHash);
     if (metadataBytes) {
@@ -158,7 +155,6 @@ function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata
   metadata.properties = properties.id;
   metadata.save();
 
-  log.info("Created metadata for token: {}", [tokenId]);
   return metadata;
 }
 
@@ -168,38 +164,38 @@ export function handleMetadataRequested(event: MetadataRequested): void {
 
   log.info("Metadata requested for token: {}", [tokenIdString]);
 
-  // Load Token entity to ensure it exists
   let token = Token.load(tokenIdString);
   if (token == null) {
     log.warning("Token not found for MetadataRequested event, tokenId: {}", [tokenIdString]);
     return;
   }
 
-  // Fetch tokenURI from ForgeInventory contract
+  let metadata = TokenMetadata.load(tokenIdString);
+  if (metadata != null) {
+    log.info("Metadata already exists for token: {}", [tokenIdString]);
+    return;
+  }
+
   let contract = ForgeInventory.bind(FORGE_INVENTORY_ADDRESS);
   let tokenURIResult = contract.try_tokenURI(tokenId);
-  let tokenURI = tokenURIResult.reverted ? "" : tokenURIResult.value;
+  let tokenURI = tokenURIResult.reverted ? null : tokenURIResult.value;
 
-  // Fetch and parse metadata
-  let metadata = fetchAndParseMetadata(tokenIdString, tokenURI);
+  metadata = fetchAndParseMetadata(tokenIdString, tokenURI);
   if (metadata != null) {
-    metadata.token = tokenIdString; // Link to Token entity
+    metadata.token = tokenIdString;
     metadata.save();
 
-    // Update Token entity
     token.metadata = metadata.id;
     token.name = metadata.name;
     token.description = metadata.description;
     token.image = metadata.image;
     token.rewardId = metadata.rewardId;
-
     if (metadata.properties != null) {
       let properties = TokenProperties.load(metadata.properties!);
       if (properties != null) {
         token.forgeId = properties.forgeId;
       }
     }
-
     token.save();
   }
 

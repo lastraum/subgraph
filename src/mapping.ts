@@ -1,4 +1,4 @@
-import { BigInt, Bytes, store, ethereum, json, log, ipfs } from "@graphprotocol/graph-ts";
+import { BigInt, Bytes, store, ethereum, json, log, ipfs, http } from "@graphprotocol/graph-ts";
 import {
   ForgeInventory,
   TokenCreated,
@@ -22,29 +22,71 @@ import {
   UserInventoryItem
 } from "../generated/schema";
 
-// Constants for role names
 const MINTER_ROLE = "0x9f2df0fed2c77648de5860a4cc508cd0818c85b8b8a1ab4ceeef8d981c8956a6";
-const DEFAULT_ADMIN_ROLE = "0x0000000000000000000000000000000000000000000000000000000000000000";
+const DEFAULT_ADMIN_ROLE = "0x0000000000000000000000000000000000000000";
 
-// Helper function to fetch and parse metadata from tokenURI
-// Note: HTTP fetching not available in current graph-ts version
-function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata | null {
+function fetchAndParseMetadata(tokenId: string, tokenURI: string | null): TokenMetadata | null {
   let metadata = new TokenMetadata(tokenId);
   metadata.token = tokenId;
 
-  // Set default values
   metadata.name = "Token " + tokenId;
   metadata.description = "Description for token " + tokenId;
   metadata.image = "";
   metadata.rewardId = "";
 
-  // Handle HTTP URIs - currently not supported
-  if (tokenURI.startsWith("http")) {
-    log.info("HTTP URI detected for token: {}, but HTTP fetching not available", [tokenId]);
-    // TODO: Implement HTTP fetching when http module becomes available
+  if (!tokenURI) {
+    log.warning("Empty tokenURI for token ID: {}", [tokenId]);
+    metadata.save();
+    return metadata;
   }
-  // Handle IPFS URIs
-  else if (tokenURI.startsWith("ipfs://")) {
+
+  if (tokenURI.startsWith("http")) {
+    log.info("HTTP URI detected for token: {}", [tokenId]);
+    let response = http.get(tokenURI);
+    if (response && response.status == 200) {
+      let metadataJson = json.try_fromBytes(response.body);
+      if (metadataJson.isOk) {
+        let metadataObj = metadataJson.value.toObject();
+        let name = metadataObj.get("name");
+        let description = metadataObj.get("description");
+        let image = metadataObj.get("image");
+        let rewardId = metadataObj.get("rewardId");
+        let forgeId = metadataObj.get("forge_id");
+
+        if (name) metadata.name = name.toString();
+        if (description) metadata.description = description.toString();
+        if (image) metadata.image = image.toString();
+        if (rewardId) metadata.rewardId = rewardId.toString();
+
+        let attributes = metadataObj.get("attributes");
+        if (attributes && attributes.kind == json.JSONValueKind.ARRAY) {
+          let attrArray = attributes.toArray();
+          for (let i = 0; i < attrArray.length; i++) {
+            let attrObj = attrArray[i].toObject();
+            let traitType = attrObj.get("trait_type");
+            let value = attrObj.get("value");
+            if (traitType && value) {
+              let attrId = tokenId + "-attr-" + i.toString();
+              let attribute = new TokenAttribute(attrId);
+              attribute.metadata = tokenId;
+              attribute.traitType = traitType.toString();
+              attribute.value = value.toString();
+              attribute.save();
+            }
+          }
+        }
+
+        log.info("Successfully fetched HTTP metadata for token: {}", [tokenId]);
+      } else {
+        log.warning("Failed to parse HTTP metadata JSON for token ID: {}", [tokenId]);
+      }
+    } else {
+      log.warning("HTTP request failed for token ID {}, status: {}", [
+        tokenId,
+        response ? response.status.toString() : "no response"
+      ]);
+    }
+  } else if (tokenURI.startsWith("ipfs://")) {
     log.info("IPFS URI detected for token: {}", [tokenId]);
     let ipfsHash = tokenURI.replace("ipfs://", "").split("/")[0];
     let metadataBytes = ipfs.cat(ipfsHash);
@@ -64,6 +106,24 @@ function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata
         if (image) metadata.image = image.toString();
         if (rewardId) metadata.rewardId = rewardId.toString();
 
+        let attributes = metadataObj.get("attributes");
+        if (attributes && attributes.kind == json.JSONValueKind.ARRAY) {
+          let attrArray = attributes.toArray();
+          for (let i = 0; i < attrArray.length; i++) {
+            let attrObj = attrArray[i].toObject();
+            let traitType = attrObj.get("trait_type");
+            let value = attrObj.get("value");
+            if (traitType && value) {
+              let attrId = tokenId + "-attr-" + i.toString();
+              let attribute = new TokenAttribute(attrId);
+              attribute.metadata = tokenId;
+              attribute.traitType = traitType.toString();
+              attribute.value = value.toString();
+              attribute.save();
+            }
+          }
+        }
+
         log.info("Successfully fetched IPFS metadata for token: {}", [tokenId]);
       } else {
         log.warning("Failed to parse IPFS metadata JSON for token ID: {}", [tokenId]);
@@ -75,7 +135,6 @@ function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata
     log.info("Non-HTTP/IPFS tokenURI for token ID: {}", [tokenId]);
   }
 
-  // Create properties entity
   let properties = new TokenProperties(tokenId);
   properties.metadata = tokenId;
   properties.badgeType = "";
@@ -83,8 +142,20 @@ function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata
   properties.rewardId = metadata.rewardId;
   properties.forgeId = "";
 
-  // Extract forge_id for properties
-  if (tokenURI.startsWith("ipfs://")) {
+  if (tokenURI && tokenURI.startsWith("http")) {
+    let response = http.get(tokenURI);
+    if (response && response.status == 200) {
+      let metadataJson = json.try_fromBytes(response.body);
+      if (metadataJson.isOk) {
+        let metadataObj = metadataJson.value.toObject();
+        let forgeId = metadataObj.get("forge_id");
+        if (forgeId) {
+          properties.forgeId = forgeId.toString();
+          metadata.rewardId = forgeId.toString();
+        }
+      }
+    }
+  } else if (tokenURI && tokenURI.startsWith("ipfs://")) {
     let ipfsHash = tokenURI.replace("ipfs://", "").split("/")[0];
     let metadataBytes = ipfs.cat(ipfsHash);
     if (metadataBytes) {
@@ -104,7 +175,6 @@ function fetchAndParseMetadata(tokenId: string, tokenURI: string): TokenMetadata
   metadata.properties = properties.id;
   metadata.save();
 
-  log.info("Created metadata for token: {}", [tokenId]);
   return metadata;
 }
 
@@ -112,7 +182,6 @@ export function handleTokenCreated(event: TokenCreated): void {
   let tokenId = event.params.tokenId;
   let tokenIdString = tokenId.toString();
 
-  // Create or load Token entity
   let token = Token.load(tokenIdString);
   if (token == null) {
     token = new Token(tokenIdString);
@@ -128,30 +197,19 @@ export function handleTokenCreated(event: TokenCreated): void {
     token.createdAtBlock = event.block.number;
     token.createdTxHash = event.transaction.hash;
 
-    // For now, use a default tokenURI since try_tokenURI doesn't exist
-    token.tokenURI = "";
-    
-    // TODO: Implement proper tokenURI fetching when contract method is available
-    // let contract = ForgeInventory.bind(event.address);
-    // let tokenURIResult = contract.try_tokenURI(tokenId);
-    // if (tokenURIResult.reverted) {
-    //   log.warning("tokenURI reverted for token ID: {}", [tokenIdString]);
-    //   token.tokenURI = "";
-    // } else {
-    //   token.tokenURI = tokenURIResult.value;
-    // }
+    let contract = ForgeInventory.bind(event.address);
+    let tokenURIResult = contract.try_tokenURI(tokenId);
+    token.tokenURI = tokenURIResult.reverted ? null : tokenURIResult.value;
 
-    // Fetch metadata
     let metadata = fetchAndParseMetadata(tokenIdString, token.tokenURI);
-
     if (metadata != null) {
+      metadata.token = tokenIdString;
+      metadata.save();
       token.metadata = metadata.id;
       token.name = metadata.name;
       token.description = metadata.description;
       token.image = metadata.image;
       token.rewardId = metadata.rewardId;
-
-      // Get forge_id from properties
       if (metadata.properties != null) {
         let properties = TokenProperties.load(metadata.properties!);
         if (properties != null) {
@@ -159,7 +217,6 @@ export function handleTokenCreated(event: TokenCreated): void {
         }
       }
     } else {
-      // Fallback metadata
       token.name = "Token " + tokenIdString;
       token.description = "Description for token " + tokenIdString;
       token.image = "";
@@ -170,7 +227,6 @@ export function handleTokenCreated(event: TokenCreated): void {
     token.save();
   }
 
-  // Create TokenCreation entity
   let creationId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
   let creation = new TokenCreation(creationId);
   creation.token = tokenIdString;
@@ -184,7 +240,6 @@ export function handleTokenCreated(event: TokenCreated): void {
   creation.transactionHash = event.transaction.hash;
   creation.save();
 
-  // Create AllEvent entity
   let eventId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
   let allEvent = new AllEvent(eventId);
   allEvent.eventType = "TokenCreated";
@@ -194,11 +249,9 @@ export function handleTokenCreated(event: TokenCreated): void {
   allEvent.transactionIndex = event.transaction.index;
   allEvent.logIndex = event.logIndex;
   allEvent.timestamp = event.block.timestamp;
-  // Note: gasUsed and other properties may not be available in all transaction types
-  allEvent.gasUsed = BigInt.fromI32(0); // Default value
   allEvent.gasPrice = event.transaction.gasPrice;
   allEvent.from = event.transaction.from;
-  allEvent.to = event.transaction.to ? event.transaction.to : Bytes.empty();
+  allEvent.to = event.transaction.to ? event.transaction.to : null;
   allEvent.value = event.transaction.value;
   allEvent.description = "Token created with ID: " + tokenIdString;
   allEvent.tokenId = tokenId;
@@ -208,16 +261,12 @@ export function handleTokenCreated(event: TokenCreated): void {
   allEvent.creator = event.transaction.from;
   allEvent.save();
 
-  // Update user stats
   let user = getOrCreateUser(event.transaction.from);
   user.totalTokensCreated = user.totalTokensCreated.plus(BigInt.fromI32(1));
   user.lastInteraction = event.block.timestamp;
   user.save();
 
-  // Update global stats
   updateGlobalStats(event.block.timestamp, true, false, false);
-
-  // Update daily stats
   updateDailyStats(event.block.timestamp, true, false);
 }
 
@@ -228,17 +277,14 @@ export function handleTransferSingle(event: TransferSingle): void {
   let to = event.params.to;
   let from = event.params.from;
 
-  // Skip minting events (from zero address) - handle them separately
   if (from.toHex() == "0x0000000000000000000000000000000000000000") {
     handleTokenMint(to, tokenId, amount, event.params.operator, event);
     return;
   }
 
-  // Handle regular transfers
   updateUserBalance(from, tokenId, amount.neg(), event.block.timestamp);
   updateUserBalance(to, tokenId, amount, event.block.timestamp);
 
-  // Create AllEvent entity
   let eventId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
   let allEvent = new AllEvent(eventId);
   allEvent.eventType = "TransferSingle";
@@ -248,10 +294,9 @@ export function handleTransferSingle(event: TransferSingle): void {
   allEvent.transactionIndex = event.transaction.index;
   allEvent.logIndex = event.logIndex;
   allEvent.timestamp = event.block.timestamp;
-  allEvent.gasUsed = BigInt.fromI32(0); // Default value
   allEvent.gasPrice = event.transaction.gasPrice;
   allEvent.from = event.transaction.from;
-  allEvent.to = event.transaction.to ? event.transaction.to : Bytes.empty();
+  allEvent.to = event.transaction.to ? event.transaction.to : null;
   allEvent.value = event.transaction.value;
   allEvent.description = "Single transfer of token ID: " + tokenIdString;
   allEvent.fromAddress = from;
@@ -280,7 +325,6 @@ export function handleTransferBatch(event: TransferBatch): void {
     }
   }
 
-  // Create AllEvent entity
   let eventId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
   let allEvent = new AllEvent(eventId);
   allEvent.eventType = "TransferBatch";
@@ -290,10 +334,9 @@ export function handleTransferBatch(event: TransferBatch): void {
   allEvent.transactionIndex = event.transaction.index;
   allEvent.logIndex = event.logIndex;
   allEvent.timestamp = event.block.timestamp;
-  allEvent.gasUsed = BigInt.fromI32(0); // Default value
   allEvent.gasPrice = event.transaction.gasPrice;
   allEvent.from = event.transaction.from;
-  allEvent.to = event.transaction.to ? event.transaction.to : Bytes.empty();
+  allEvent.to = event.transaction.to ? event.transaction.to : null;
   allEvent.value = event.transaction.value;
   allEvent.description = "Batch transfer of tokens";
   allEvent.fromAddress = from;
@@ -307,7 +350,6 @@ export function handleTransferBatch(event: TransferBatch): void {
 function handleTokenMint(to: Bytes, tokenId: BigInt, amount: BigInt, operator: Bytes, event: ethereum.Event): void {
   let tokenIdString = tokenId.toString();
 
-  // Create TokenMint entity
   let mintId = event.transaction.hash.toHex() + "-" + event.logIndex.toString() + "-" + tokenIdString;
   let mint = new TokenMint(mintId);
   mint.token = tokenIdString;
@@ -318,7 +360,6 @@ function handleTokenMint(to: Bytes, tokenId: BigInt, amount: BigInt, operator: B
   mint.transactionHash = event.transaction.hash;
   mint.operator = operator;
 
-  // Populate direct metadata fields
   let tokenEntity = Token.load(tokenIdString);
   if (tokenEntity != null) {
     mint.tokenName = tokenEntity.name;
@@ -332,16 +373,13 @@ function handleTokenMint(to: Bytes, tokenId: BigInt, amount: BigInt, operator: B
 
   mint.save();
 
-  // Update token supply
   if (tokenEntity != null) {
     tokenEntity.currentSupply = tokenEntity.currentSupply.plus(amount);
     tokenEntity.save();
   }
 
-  // Update user balance
   updateUserBalance(to, tokenId, amount, event.block.timestamp);
 
-  // Update UserInventoryItem
   let inventoryId = to.toHex() + "-" + tokenIdString;
   let inventoryItem = UserInventoryItem.load(inventoryId);
   if (inventoryItem == null) {
@@ -360,19 +398,14 @@ function handleTokenMint(to: Bytes, tokenId: BigInt, amount: BigInt, operator: B
   inventoryItem.lastAcquired = event.block.timestamp;
   inventoryItem.save();
 
-  // Update user stats
   let user = getOrCreateUser(to);
   user.totalTokensMinted = user.totalTokensMinted.plus(amount);
   user.lastInteraction = event.block.timestamp;
   user.save();
 
-  // Update global stats
   updateGlobalStats(event.block.timestamp, false, true, false);
-
-  // Update daily stats
   updateDailyStats(event.block.timestamp, false, true);
 
-  // Create AllEvent entity
   let eventId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
   let allEvent = new AllEvent(eventId);
   allEvent.eventType = "TokenMint";
@@ -382,10 +415,9 @@ function handleTokenMint(to: Bytes, tokenId: BigInt, amount: BigInt, operator: B
   allEvent.transactionIndex = event.transaction.index;
   allEvent.logIndex = event.logIndex;
   allEvent.timestamp = event.block.timestamp;
-  allEvent.gasUsed = BigInt.fromI32(0); // Default value
   allEvent.gasPrice = event.transaction.gasPrice;
   allEvent.from = event.transaction.from;
-  allEvent.to = event.transaction.to ? event.transaction.to : Bytes.empty();
+  allEvent.to = event.transaction.to ? event.transaction.to : null;
   allEvent.value = event.transaction.value;
   allEvent.description = "Mint of token ID: " + tokenIdString;
   allEvent.toAddress = to;
@@ -408,12 +440,10 @@ export function handleRoleGranted(event: RoleGranted): void {
   roleChange.transactionHash = event.transaction.hash;
   roleChange.save();
 
-  // Update user
   let user = getOrCreateUser(event.params.account);
   user.lastInteraction = event.block.timestamp;
   user.save();
 
-  // Create AllEvent entity
   let eventId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
   let allEvent = new AllEvent(eventId);
   allEvent.eventType = "RoleGranted";
@@ -423,10 +453,9 @@ export function handleRoleGranted(event: RoleGranted): void {
   allEvent.transactionIndex = event.transaction.index;
   allEvent.logIndex = event.logIndex;
   allEvent.timestamp = event.block.timestamp;
-  allEvent.gasUsed = event.transaction.gasUsed;
   allEvent.gasPrice = event.transaction.gasPrice;
   allEvent.from = event.transaction.from;
-  allEvent.to = event.transaction.to;
+  allEvent.to = event.transaction.to ? event.transaction.to : null;
   allEvent.value = event.transaction.value;
   allEvent.description = "Role granted: " + getRoleName(event.params.role);
   allEvent.role = event.params.role;
@@ -449,12 +478,10 @@ export function handleRoleRevoked(event: RoleRevoked): void {
   roleChange.transactionHash = event.transaction.hash;
   roleChange.save();
 
-  // Update user
   let user = getOrCreateUser(event.params.account);
   user.lastInteraction = event.block.timestamp;
   user.save();
 
-  // Create AllEvent entity
   let eventId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
   let allEvent = new AllEvent(eventId);
   allEvent.eventType = "RoleRevoked";
@@ -464,10 +491,9 @@ export function handleRoleRevoked(event: RoleRevoked): void {
   allEvent.transactionIndex = event.transaction.index;
   allEvent.logIndex = event.logIndex;
   allEvent.timestamp = event.block.timestamp;
-  allEvent.gasUsed = event.transaction.gasUsed;
   allEvent.gasPrice = event.transaction.gasPrice;
   allEvent.from = event.transaction.from;
-  allEvent.to = event.transaction.to;
+  allEvent.to = event.transaction.to ? event.transaction.to : null;
   allEvent.value = event.transaction.value;
   allEvent.description = "Role revoked: " + getRoleName(event.params.role);
   allEvent.role = event.params.role;
@@ -477,7 +503,6 @@ export function handleRoleRevoked(event: RoleRevoked): void {
   allEvent.save();
 }
 
-// Helper functions
 function getOrCreateUser(address: Bytes): User {
   let userId = address.toHex();
   let user = User.load(userId);
@@ -490,101 +515,97 @@ function getOrCreateUser(address: Bytes): User {
     user.firstInteraction = BigInt.fromI32(0);
     user.lastInteraction = BigInt.fromI32(0);
     user.totalInventoryValue = BigInt.fromI32(0);
-
-    // Update global user count
     updateGlobalStats(BigInt.fromI32(0), false, false, true);
   }
 
   if (user.firstInteraction.equals(BigInt.fromI32(0))) {
-    user.firstInteraction = BigInt.fromI32(0); // Will be set by caller
+    user.firstInteraction = BigInt.fromI32(0);
   }
 
   user.save();
-  return user as User;
+  return user;
 }
 
-function updateUserBalance(userAddress: Bytes, tokenId: BigInt, amountChange: BigInt, timestamp: BigInt): void {
-  let balanceId = userAddress.toHex() + "-" + tokenId.toString();
-  let balance = UserTokenBalance.load(balanceId);
+function updateUserBalance(address: Bytes, tokenId: BigInt, amount: BigInt, timestamp: BigInt): void {
+  let tokenIdString = tokenId.toString();
+  let userId = address.toHex();
+  let balanceId = userId + "-" + tokenIdString;
 
+  let balance = UserTokenBalance.load(balanceId);
   if (balance == null) {
     balance = new UserTokenBalance(balanceId);
-    balance.user = getOrCreateUser(userAddress).id;
-    balance.token = tokenId.toString();
+    balance.user = userId;
+    balance.token = tokenIdString;
     balance.balance = BigInt.fromI32(0);
   }
 
-  balance.balance = balance.balance.plus(amountChange);
+  balance.balance = balance.balance.plus(amount);
   balance.lastUpdated = timestamp;
 
-  // Remove balance if it's zero
   if (balance.balance.equals(BigInt.fromI32(0))) {
     store.remove("UserTokenBalance", balanceId);
   } else {
     balance.save();
   }
+
+  let user = getOrCreateUser(address);
+  user.totalInventoryValue = user.totalInventoryValue.plus(amount);
+  user.lastInteraction = timestamp;
+  user.save();
 }
 
 function getRoleName(role: Bytes): string {
-  let roleHex = role.toHex();
-  if (roleHex == MINTER_ROLE) {
-    return "MINTER_ROLE";
-  } else if (roleHex == DEFAULT_ADMIN_ROLE) {
-    return "DEFAULT_ADMIN_ROLE";
+  if (role.toHex() == MINTER_ROLE) {
+    return "MINTER";
+  } else if (role.toHex() == DEFAULT_ADMIN_ROLE) {
+    return "DEFAULT_ADMIN";
   }
-  return "UNKNOWN_ROLE";
+  return "UNKNOWN";
 }
 
-function updateGlobalStats(timestamp: BigInt, tokenCreated: boolean, tokenMinted: boolean, newUser: boolean): void {
-  let stats = GlobalStats.load("global");
-  if (stats == null) {
-    stats = new GlobalStats("global");
-    stats.totalTokens = BigInt.fromI32(0);
-    stats.totalMints = BigInt.fromI32(0);
-    stats.totalUsers = BigInt.fromI32(0);
-    stats.totalSupply = BigInt.fromI32(0);
-    stats.totalEvents = BigInt.fromI32(0);
+function updateGlobalStats(timestamp: BigInt, incrementTokens: boolean, incrementMints: boolean, incrementUsers: boolean): void {
+  let globalStats = GlobalStats.load("1");
+  if (globalStats == null) {
+    globalStats = new GlobalStats("1");
+    globalStats.totalTokens = BigInt.fromI32(0);
+    globalStats.totalMints = BigInt.fromI32(0);
+    globalStats.totalUsers = BigInt.fromI32(0);
+    globalStats.totalSupply = BigInt.fromI32(0);
+    globalStats.totalEvents = BigInt.fromI32(0);
   }
 
-  if (tokenCreated) {
-    stats.totalTokens = stats.totalTokens.plus(BigInt.fromI32(1));
+  if (incrementTokens) {
+    globalStats.totalTokens = globalStats.totalTokens.plus(BigInt.fromI32(1));
   }
-
-  if (tokenMinted) {
-    stats.totalMints = stats.totalMints.plus(BigInt.fromI32(1));
+  if (incrementMints) {
+    globalStats.totalMints = globalStats.totalMints.plus(BigInt.fromI32(1));
   }
-
-  if (newUser) {
-    stats.totalUsers = stats.totalUsers.plus(BigInt.fromI32(1));
+  if (incrementUsers) {
+    globalStats.totalUsers = globalStats.totalUsers.plus(BigInt.fromI32(1));
   }
-
-  stats.totalEvents = stats.totalEvents.plus(BigInt.fromI32(1));
-  stats.lastUpdated = timestamp;
-  stats.save();
+  globalStats.totalEvents = globalStats.totalEvents.plus(BigInt.fromI32(1));
+  globalStats.lastUpdated = timestamp;
+  globalStats.save();
 }
 
-function updateDailyStats(timestamp: BigInt, tokenCreated: boolean, tokenMinted: boolean): void {
-  let dayTimestamp = timestamp.div(BigInt.fromI32(86400)).times(BigInt.fromI32(86400));
-  let dayId = dayTimestamp.toString();
-
-  let dailyStats = DailyStats.load(dayId);
+function updateDailyStats(timestamp: BigInt, incrementTokens: boolean, incrementMints: boolean): void {
+  let date = timestamp.div(BigInt.fromI32(86400)).toString();
+  let dailyStats = DailyStats.load(date);
   if (dailyStats == null) {
-    dailyStats = new DailyStats(dayId);
-    dailyStats.date = dayTimestamp;
+    dailyStats = new DailyStats(date);
+    dailyStats.date = timestamp.div(BigInt.fromI32(86400));
     dailyStats.tokensCreated = BigInt.fromI32(0);
     dailyStats.tokensMinted = BigInt.fromI32(0);
     dailyStats.activeUsers = BigInt.fromI32(0);
     dailyStats.totalSupplyChange = BigInt.fromI32(0);
   }
 
-  if (tokenCreated) {
+  if (incrementTokens) {
     dailyStats.tokensCreated = dailyStats.tokensCreated.plus(BigInt.fromI32(1));
   }
-
-  if (tokenMinted) {
+  if (incrementMints) {
     dailyStats.tokensMinted = dailyStats.tokensMinted.plus(BigInt.fromI32(1));
   }
-
   dailyStats.activeUsers = dailyStats.activeUsers.plus(BigInt.fromI32(1));
   dailyStats.save();
 }
