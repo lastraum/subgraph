@@ -19,7 +19,8 @@ import {
   TokenMetadata,
   TokenProperties,
   AllEvent,
-  UserInventoryItem
+  UserInventoryItem,
+  TokenAttribute
 } from "../generated/schema";
 
 const MINTER_ROLE = "0x9f2df0fed2c77648de5860a4cc508cd0818c85b8b8a1ab4ceeef8d981c8956a6";
@@ -183,7 +184,7 @@ export function handleTokenCreated(event: TokenCreated): void {
   let tokenIdString = tokenId.toString();
 
   let token = Token.load(tokenIdString);
-  if (token == null) {
+  if (!token) {
     token = new Token(tokenIdString);
     token.tokenId = tokenId;
     token.tokenType = event.params.tokenType;
@@ -198,11 +199,11 @@ export function handleTokenCreated(event: TokenCreated): void {
     token.createdTxHash = event.transaction.hash;
 
     let contract = ForgeInventory.bind(event.address);
-    let tokenURIResult = contract.try_tokenURI(tokenId);
+    let tokenURIResult = contract.try_uri(tokenId); // Use try_uri instead of try_tokenURI
     token.tokenURI = tokenURIResult.reverted ? null : tokenURIResult.value;
 
     let metadata = fetchAndParseMetadata(tokenIdString, token.tokenURI);
-    if (metadata != null) {
+    if (metadata) {
       metadata.token = tokenIdString;
       metadata.save();
       token.metadata = metadata.id;
@@ -210,9 +211,9 @@ export function handleTokenCreated(event: TokenCreated): void {
       token.description = metadata.description;
       token.image = metadata.image;
       token.rewardId = metadata.rewardId;
-      if (metadata.properties != null) {
-        let properties = TokenProperties.load(metadata.properties!);
-        if (properties != null) {
+      if (metadata.properties) {
+        let properties = TokenProperties.load(metadata.properties);
+        if (properties) {
           token.forgeId = properties.forgeId;
         }
       }
@@ -361,7 +362,7 @@ function handleTokenMint(to: Bytes, tokenId: BigInt, amount: BigInt, operator: B
   mint.operator = operator;
 
   let tokenEntity = Token.load(tokenIdString);
-  if (tokenEntity != null) {
+  if (tokenEntity) {
     mint.tokenName = tokenEntity.name;
     mint.tokenDescription = tokenEntity.description;
     mint.tokenImage = tokenEntity.image;
@@ -373,7 +374,7 @@ function handleTokenMint(to: Bytes, tokenId: BigInt, amount: BigInt, operator: B
 
   mint.save();
 
-  if (tokenEntity != null) {
+  if (tokenEntity) {
     tokenEntity.currentSupply = tokenEntity.currentSupply.plus(amount);
     tokenEntity.save();
   }
@@ -382,7 +383,7 @@ function handleTokenMint(to: Bytes, tokenId: BigInt, amount: BigInt, operator: B
 
   let inventoryId = to.toHex() + "-" + tokenIdString;
   let inventoryItem = UserInventoryItem.load(inventoryId);
-  if (inventoryItem == null) {
+  if (!inventoryItem) {
     inventoryItem = new UserInventoryItem(inventoryId);
     inventoryItem.user = getOrCreateUser(to).id;
     inventoryItem.token = tokenIdString;
@@ -507,7 +508,7 @@ function getOrCreateUser(address: Bytes): User {
   let userId = address.toHex();
   let user = User.load(userId);
 
-  if (user == null) {
+  if (!user) {
     user = new User(userId);
     user.address = address;
     user.totalTokensCreated = BigInt.fromI32(0);
@@ -532,7 +533,7 @@ function updateUserBalance(address: Bytes, tokenId: BigInt, amount: BigInt, time
   let balanceId = userId + "-" + tokenIdString;
 
   let balance = UserTokenBalance.load(balanceId);
-  if (balance == null) {
+  if (!balance) {
     balance = new UserTokenBalance(balanceId);
     balance.user = userId;
     balance.token = tokenIdString;
@@ -565,7 +566,7 @@ function getRoleName(role: Bytes): string {
 
 function updateGlobalStats(timestamp: BigInt, incrementTokens: boolean, incrementMints: boolean, incrementUsers: boolean): void {
   let globalStats = GlobalStats.load("1");
-  if (globalStats == null) {
+  if (!globalStats) {
     globalStats = new GlobalStats("1");
     globalStats.totalTokens = BigInt.fromI32(0);
     globalStats.totalMints = BigInt.fromI32(0);
@@ -591,7 +592,7 @@ function updateGlobalStats(timestamp: BigInt, incrementTokens: boolean, incremen
 function updateDailyStats(timestamp: BigInt, incrementTokens: boolean, incrementMints: boolean): void {
   let date = timestamp.div(BigInt.fromI32(86400)).toString();
   let dailyStats = DailyStats.load(date);
-  if (dailyStats == null) {
+  if (!dailyStats) {
     dailyStats = new DailyStats(date);
     dailyStats.date = timestamp.div(BigInt.fromI32(86400));
     dailyStats.tokensCreated = BigInt.fromI32(0);

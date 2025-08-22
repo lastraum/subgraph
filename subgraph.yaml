@@ -1,4 +1,4 @@
-specVersion: 0.0.5
+specVersion: 0.0.4
 schema:
   file: ./schema.graphql
 dataSources:
@@ -6,9 +6,9 @@ dataSources:
     name: ForgeInventory
     network: base-sepolia
     source:
-      address: "0xD21C2B389073cC05251D3afC0B41674BF05C62e9" # ForgeInventory proxy contract
+      address: "0xD21C2B389073cC05251D3afC0B41674BF05C62e9"
       abi: ForgeInventory
-      startBlock: 18800000 # Approximate block when contract was deployed
+      startBlock: 0
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -17,22 +17,25 @@ dataSources:
         - Token
         - TokenCreation
         - TokenMint
-        - RoleChange
         - User
+        - UserTokenBalance
+        - RoleChange
+        - GlobalStats
+        - DailyStats
         - TokenMetadata
-        - TokenAttribute
         - TokenProperties
-        - UserInventoryItem
         - AllEvent
+        - UserInventoryItem
+        - TokenAttribute
       abis:
         - name: ForgeInventory
           file: ./abis/ForgeInventory.json
       eventHandlers:
         - event: TokenCreated(indexed uint256,uint8,string,string)
           handler: handleTokenCreated
-        - event: TransferSingle(indexed address,indexed address,indexed address,uint256,uint256)
+        - event: TransferSingle(indexed address,indexed address,indexed uint256,uint256)
           handler: handleTransferSingle
-        - event: TransferBatch(indexed address,indexed address,indexed address,uint256[],uint256[])
+        - event: TransferBatch(indexed address,indexed address,indexed uint256[],uint256[])
           handler: handleTransferBatch
         - event: RoleGranted(indexed bytes32,indexed address,indexed address)
           handler: handleRoleGranted
@@ -40,7 +43,7 @@ dataSources:
           handler: handleRoleRevoked
       file: ./src/mapping.ts
 templates:
-  - kind: ethereum
+  - kind: ethereum/contract
     name: MetadataFetcher
     network: base-sepolia
     source:
@@ -50,10 +53,13 @@ templates:
       apiVersion: 0.0.7
       language: wasm/assemblyscript
       entities:
+        - Token
         - TokenMetadata
-        - TokenAttribute
         - TokenProperties
+        - TokenAttribute
       abis:
+        - name: ForgeInventory
+          file: ./abis/ForgeInventory.json
         - name: MetadataFetcher
           file: ./abis/MetadataFetcher.json
       eventHandlers:

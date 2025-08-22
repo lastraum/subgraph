@@ -1,15 +1,15 @@
 {
-  "compilerOptions": {
-    "target": "es2018",
-    "module": "commonjs",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "outDir": "./generated",
-    "rootDir": "./src",
-    "types": ["@graphprotocol/graph-ts"]
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "generated"]
-}
+    "compilerOptions": {
+      "target": "es2018",
+      "module": "commonjs",
+      "strict": true,
+      "esModuleInterop": true,
+      "skipLibCheck": true,
+      "forceConsistentCasingInFileNames": true,
+      "outDir": "./generated",
+      "rootDir": "./src",
+      "types": ["@graphprotocol/graph-ts"]
+    },
+    "include": ["src/**/*.ts"],
+    "exclude": ["node_modules", "generated"]
+  }

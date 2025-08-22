@@ -165,23 +165,23 @@ export function handleMetadataRequested(event: MetadataRequested): void {
   log.info("Metadata requested for token: {}", [tokenIdString]);
 
   let token = Token.load(tokenIdString);
-  if (token == null) {
+  if (!token) {
     log.warning("Token not found for MetadataRequested event, tokenId: {}", [tokenIdString]);
     return;
   }
 
   let metadata = TokenMetadata.load(tokenIdString);
-  if (metadata != null) {
+  if (metadata) {
     log.info("Metadata already exists for token: {}", [tokenIdString]);
     return;
   }
 
   let contract = ForgeInventory.bind(FORGE_INVENTORY_ADDRESS);
-  let tokenURIResult = contract.try_tokenURI(tokenId);
+  let tokenURIResult = contract.try_uri(tokenId); // Use try_uri instead of try_tokenURI
   let tokenURI = tokenURIResult.reverted ? null : tokenURIResult.value;
 
   metadata = fetchAndParseMetadata(tokenIdString, tokenURI);
-  if (metadata != null) {
+  if (metadata) {
     metadata.token = tokenIdString;
     metadata.save();
 
@@ -190,9 +190,9 @@ export function handleMetadataRequested(event: MetadataRequested): void {
     token.description = metadata.description;
     token.image = metadata.image;
     token.rewardId = metadata.rewardId;
-    if (metadata.properties != null) {
-      let properties = TokenProperties.load(metadata.properties!);
-      if (properties != null) {
+    if (metadata.properties) {
+      let properties = TokenProperties.load(metadata.properties);
+      if (properties) {
         token.forgeId = properties.forgeId;
       }
     }
